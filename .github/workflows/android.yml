@@ -1,0 +1,55 @@
+# 안드로이드 앱(APK) 자동 빌드
+# - android 폴더가 바뀌면(또는 Actions 탭에서 직접 실행하면) APK를 만들어 Releases에 올립니다.
+# - 앱은 웹앱(GitHub Pages)을 띄우는 방식이라, 웹앱 수정은 APK를 다시 설치하지 않아도 앱에 바로 반영됩니다.
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.5'
+
+      - name: APK 만들기
+        working-directory: android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: 파일 이름 정리
+        run: cp android/app/build/outputs/apk/release/app-release.apk mindmap.apk
+
+      - name: Releases에 올리기
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk
+          name: 마인드맵 안드로이드 앱
+          body: |
+            폰·갤럭시탭에서 **mindmap.apk** 를 눌러 내려받아 설치하세요.
+            앱 안의 내용은 웹앱(GitHub Pages)에서 바로 불러오므로, 웹앱을 고치면 앱에도 자동으로 반영됩니다.
+          files: mindmap.apk
+          make_latest: true
+          fail_on_unmatched_files: true
+
+      - name: 빌드 결과 보관
+        uses: actions/upload-artifact@v4
+        with:
+          name: mindmap-apk
+          path: mindmap.apk

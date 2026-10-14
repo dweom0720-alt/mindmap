@@ -31,19 +31,19 @@
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="searchInput" type="search" placeholder="마인드맵, 가지 내용 검색" aria-label="검색">
     </label>
-    <div class="sync"><span class="dot"></span><span>이 기기에 자동 저장됨</span></div>
+    <button class="sync" id="syncLine"><span class="dot"></span><span id="syncText">이 기기에 자동 저장됨</span></button>
   </header>
   <div class="home-actions">
     <button class="btn-primary" id="newMapBtn">
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>새 마인드맵</span>
     </button>
-    <button class="btn-outline" id="pasteMapBtn">
-      <svg viewBox="0 0 24 24"><path d="M9 4h6v3H9z"/><path d="M15 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg><span>글에서 만들기</span>
+    <button class="btn-outline" id="aiMakeBtn">
+      <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.6L12 15l-1.8-4.4L5.5 9l4.7-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg><span>AI로 만들기</span>
     </button>
   </div>
   <div class="home-actions one">
-    <button class="btn-text gold-text" id="aiMakeBtn">
-      <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.6L12 15l-1.8-4.4L5.5 9l4.7-1.4z"/></svg><span>AI로 만들기 (다음 단계)</span>
+    <button class="btn-text gold-text" id="pasteMapBtn">
+      <svg viewBox="0 0 24 24"><path d="M9 4h6v3H9z"/><path d="M15 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></svg><span>글을 붙여넣어 만들기</span>
     </button>
   </div>
   <nav class="tabs" id="catTabs"></nav>
@@ -116,5 +116,7 @@
 <input type="file" id="imgInput" accept="image/*" hidden>
 
 <script src="app.js"></script>
+<script src="ai.js"></script>
+<script src="sync.js"></script>
 </body>
 </html>

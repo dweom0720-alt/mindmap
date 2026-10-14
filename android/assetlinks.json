@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "io.github.dweom0720alt.mindmap",
+    "sha256_cert_fingerprints": ["14:6D:8C:6C:FC:79:43:60:FD:2E:B7:5B:DF:27:D8:A7:E1:75:C7:24:64:33:88:50:5B:04:E1:AF:18:42:CC:E6"]
+  }
+}]

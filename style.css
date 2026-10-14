@@ -230,3 +230,28 @@ dialog input:focus { border-color: var(--gold); }
 .tpl-cats .chip { flex-shrink: 0; }
 .apply-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
 .apply-row .row-btn { flex: 1; }
+
+/* ---------- 4차: AI·동기화 ---------- */
+button.sync { border: 0; background: transparent; padding: 4px 0; text-align: left; font: inherit; font-size: 12px; color: var(--headerMuted); cursor: pointer; align-self: flex-start; }
+.sync .dot { flex-shrink: 0; }
+.sync.off .dot { background: var(--headerMuted); opacity: .6; }
+.sync.need .dot { background: #F2A33A; }
+.sync.err .dot { background: #F2A3AE; }
+.sync.busy .dot { animation: pulse 1s infinite; }
+.spin { display: inline-block; width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rot .8s linear infinite; vertical-align: -3px; margin-right: 6px; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.ai-res { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.ai-res label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 6px; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.45; }
+.ai-res label:last-child { border-bottom: 0; }
+.ai-res input { width: 20px; height: 20px; accent-color: var(--gold); margin: 1px 0 0; flex-shrink: 0; }
+.ai-res .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ai-out { width: 100%; min-height: 280px !important; font-size: 14px !important; line-height: 1.6 !important; }
+.key-mask { font-family: ui-monospace, monospace; font-size: 13px; color: var(--muted); }
+.status-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 6px 10px; border-radius: 16px; background: var(--bg); color: var(--ink2); }
+.status-pill .d { width: 8px; height: 8px; border-radius: 4px; background: var(--muted); }
+.status-pill.ok .d { background: #2E9E6B; }
+.status-pill.need .d { background: #F2A33A; }
+.steps { margin: 6px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.7; color: var(--ink2); }
+.steps a { color: var(--goldText); }
+.menu-list a.menu-a { display: flex; align-items: center; gap: 14px; min-height: 52px; border-top: 1px solid var(--line); font-size: 15px; color: var(--ink); text-decoration: none; padding: 0 4px; }
+.menu-list a.menu-a svg { width: 20px; height: 20px; color: var(--goldText); stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

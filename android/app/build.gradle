@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+def runNo = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as Integer
+
+android {
+    namespace 'io.github.dweom0720alt.mindmap'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.github.dweom0720alt.mindmap'
+        minSdk 21
+        targetSdk 34
+        versionCode runNo
+        versionName "1.0.${runNo}"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../keystore/mindmap.jks')
+            storePassword 'mindmap-key'
+            keyAlias 'mindmap'
+            keyPassword 'mindmap-key'
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

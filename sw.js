@@ -1,6 +1,6 @@
 // 오프라인에서도 열리도록 앱 파일을 보관합니다.
-const CACHE = 'mindmap-v3';
-const APP = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'mindmap-v4';
+const APP = ['./', 'index.html', 'style.css', 'app.js', 'ai.js', 'sync.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(APP)).then(() => self.skipWaiting()));

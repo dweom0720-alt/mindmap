@@ -130,12 +130,28 @@ const store = {
   get(id) { const m = loadJSON('mm.map.' + id, null); return m && normalizeMap(m); },
   put(map) {
     map.updated = Date.now();
+    delete map.sample;
     if (!saveJSON('mm.map.' + map.id, map)) return;
     const idx = store.index().filter((m) => m.id !== map.id);
-    idx.unshift({ id: map.id, title: map.root.text || '제목 없음', category: map.category || '', updated: map.updated, count: countNodes(map.root) - 1, search: flatText(map.root) });
+    idx.unshift(store.meta(map));
+    saveJSON('mm.index', idx);
+    if (window.Sync) Sync.changed();
+  },
+  meta(map) { return { id: map.id, title: map.root.text || '제목 없음', category: map.category || '', updated: map.updated, count: countNodes(map.root) - 1, search: flatText(map.root) }; },
+  /* 동기화로 받은 맵: 수정 시각을 그대로 둔 채 저장 */
+  putRaw(map) {
+    if (!saveJSON('mm.map.' + map.id, map)) return;
+    const idx = store.index().filter((m) => m.id !== map.id);
+    idx.push(store.meta(map));
+    idx.sort((a, b) => (b.updated || 0) - (a.updated || 0));
     saveJSON('mm.index', idx);
   },
-  del(id) { localStorage.removeItem('mm.map.' + id); saveJSON('mm.index', store.index().filter((m) => m.id !== id)); },
+  removeRaw(id) { localStorage.removeItem('mm.map.' + id); saveJSON('mm.index', store.index().filter((m) => m.id !== id)); },
+  del(id) {
+    store.removeRaw(id);
+    const t = loadJSON('mm.tomb', {}); t[id] = Date.now(); saveJSON('mm.tomb', t);
+    if (window.Sync) Sync.changed();
+  },
 };
 function countNodes(n) { return 1 + (n.children || []).reduce((s, c) => s + countNodes(c), 0); }
 function flatText(n) { return [n.text, n.note || '', ...(n.children || []).map(flatText)].join(' ').toLowerCase().slice(0, 4000); }
@@ -156,6 +172,7 @@ const pstyle = (key) => ({ ...PRESETS.find((p) => p.key === key).s });
 
 function sampleMap() {
   const m = newMap('마인드맵 사용법');
+  m.sample = true;
   m.root.children = [
     mk('가지 만들기', ['아래 + 버튼 누르기', '가지 누르고 하위·형제', 'PC: Tab 하위, Enter 형제', '글을 붙여넣어 한 번에 만들기']),
     mk('글 고치기', ['가지를 두 번 누르기', 'PC: 바로 타이핑']),
@@ -230,7 +247,11 @@ const TEMPLATES = [
   { key: 'bucket', cat: '개인', name: '버킷리스트', build: () => { const m = newMap('버킷리스트', 'radial', pstyle('fun')); m.root.children = [
     mk('여행', [todo('항목')]), mk('배우기', [todo('항목')]), mk('도전', [todo('항목')]), mk('함께하기', [todo('항목')])]; return m; } },
 ];
-const myTemplates = { list: () => loadJSON('mm.tpl', []), save: (l) => saveJSON('mm.tpl', l) };
+const myTemplates = {
+  list: () => loadJSON('mm.tpl', []),
+  save: (l) => { const ok = saveJSON('mm.tpl', l); if (ok && window.Sync) Sync.changed(); return ok; },
+  remove(id) { const t = loadJSON('mm.tpltomb', {}); t[id] = Date.now(); saveJSON('mm.tpltomb', t); return this.save(this.list().filter((x) => x.id !== id)); },
+};
 
 /* 복제할 때 id 새로 붙이기 (연결선 id도 함께) */
 function cloneTree(node, idMap = new Map()) {
@@ -1019,7 +1040,13 @@ function commit(opts = {}) {
   if (opts.fit) fit();
   if (state.sel) ensureVisible(state.sel);
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => store.put(state.map), 250);
+  saveTimer = setTimeout(flushPending, 250);
+}
+/* 고친 내용이 있을 때만 저장 (열어 보기만 한 맵은 수정 시각이 바뀌지 않음) */
+function flushPending() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  if (state.map) store.put(state.map);
 }
 function afterRestore() {
   if (state.sel && !findNode(state.map.root, state.sel)) state.sel = null;
@@ -1570,7 +1597,6 @@ pill.addEventListener('click', (ev) => {
 });
 $('#fab').addEventListener('click', () => addChild(state.sel || state.map.root.id));
 $('#fitBtn').addEventListener('click', () => fit());
-$('#aiBtn').addEventListener('click', () => toast('AI 기능(가지 뻗기·글→맵·맵→글)은 다음 단계에서 추가됩니다'));
 $('#undoBtn').addEventListener('click', undo);
 $('#redoBtn').addEventListener('click', redo);
 $('#backBtn').addEventListener('click', () => {
@@ -2078,7 +2104,6 @@ $('#mapList').addEventListener('click', (ev) => {
 $('#mapList').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { const c = ev.target.closest('[data-open]'); if (c) openMap(c.dataset.open); } });
 $('#newMapBtn').addEventListener('click', openTemplates);
 $('#pasteMapBtn').addEventListener('click', openPasteSheet);
-$('#aiMakeBtn').addEventListener('click', () => toast('AI로 만들기는 다음 단계에서 추가됩니다'));
 $('#homeMenuBtn').addEventListener('click', openHomeMenu);
 
 /* 새로 만들기: 템플릿 */
@@ -2114,7 +2139,7 @@ function openTemplates() {
     const del = ev.target.closest('[data-deltpl]');
     if (del) {
       ev.stopPropagation();
-      if (await confirmDlg('템플릿 삭제', '이 템플릿을 삭제할까요?')) { myTemplates.save(myTemplates.list().filter((t) => t.id !== del.dataset.deltpl)); openTemplates(); }
+      if (await confirmDlg('템플릿 삭제', '이 템플릿을 삭제할까요?')) { myTemplates.remove(del.dataset.deltpl); openTemplates(); }
       return;
     }
     const t = myTemplates.list().find((x) => x.id === b.dataset.mytpl); if (!t) return;
@@ -2173,13 +2198,18 @@ function openCardMenu(id) {
 function openHomeMenu() {
   openSheet(`
     <div class="sh-title">설정</div>
+    ${window.Sync ? Sync.settingsHTML() : ''}
+    ${window.AI ? AI.settingsHTML() : ''}
     <div class="sh-sec"><div class="sh-label">테마</div>${themePicker()}</div>
     <div class="menu-list">
       <button id="hBackup">${ICO.save}<span>전체 백업 파일로 저장</span><span class="sub">${store.index().length}개</span></button>
       <button id="hRestore">${ICO.open}<span>백업 파일 불러오기</span></button>
+      <a class="menu-a" href="https://github.com/dweom0720-alt/mindmap/releases/latest/download/mindmap.apk" target="_blank" rel="noopener">${ICO.save}<span>안드로이드 앱(APK) 받기</span></a>
     </div>
-    <p class="hint">지금은 이 기기에만 저장됩니다. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 백업해 두세요. 구글 드라이브 동기화는 다음 단계에서 추가됩니다.</p>`, 'home');
+    <p class="hint">구글 드라이브를 연결하지 않으면 이 기기에만 저장됩니다. 폰을 바꾸거나 브라우저 데이터를 지우기 전에 백업해 두세요.</p>`, 'home');
   bindThemePicker(openHomeMenu);
+  if (window.Sync) Sync.bindSettings(openHomeMenu);
+  if (window.AI) AI.bindSettings(openHomeMenu);
   $('#hBackup').onclick = () => {
     closeSheet();
     const maps = store.index().map((m) => store.get(m.id)).filter(Boolean);
@@ -2217,7 +2247,7 @@ $('#fileInput').addEventListener('change', async (ev) => {
 function showHome() {
   if (state.editing) finishEdit(true);
   if (state.voice) state.voice.abort();
-  if (state.map) { clearTimeout(saveTimer); store.put(state.map); }
+  flushPending();
   closeSheet();
   state.view = 'home'; state.map = null; state.sel = null; state.selLink = null; state.linking = null;
   $('#editor').hidden = true; $('#home').hidden = false;
@@ -2241,12 +2271,12 @@ function route() {
   const m = location.hash.match(/^#\/map\/(.+)$/);
   if (m) openMap(m[1], false); else showHome();
 }
-window.addEventListener('pagehide', () => { if (state.map) store.put(state.map); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && state.map) store.put(state.map); });
+window.addEventListener('pagehide', flushPending);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushPending(); });
 
 /* ---------- 시작 ---------- */
 (function init() {
-  if (!localStorage.getItem('mm.index')) store.put(sampleMap());
+  if (!localStorage.getItem('mm.index')) store.putRaw(sampleMap());
   applyTheme();
   route();
   if (document.fonts) document.fonts.ready.then(() => { mcache.clear(); if (state.view === 'editor') render(); else renderHome(); });
