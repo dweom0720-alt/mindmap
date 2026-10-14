@@ -39,10 +39,11 @@ jobs:
       - name: Releases에 올리기
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk
-          name: 마인드맵 안드로이드 앱
+          tag_name: v1.0.${{ github.run_number }}
+          name: 마인드맵 v1.0.${{ github.run_number }}
           body: |
-            폰·갤럭시탭에서 **mindmap.apk** 를 눌러 내려받아 설치하세요.
+            Obtainium에 https://github.com/dweom0720-alt/mindmap 을 등록하면 자동으로 업데이트됩니다.
+            직접 설치하려면 **mindmap.apk** 를 눌러 내려받으세요.
             앱 안의 내용은 웹앱(GitHub Pages)에서 바로 불러오므로, 웹앱을 고치면 앱에도 자동으로 반영됩니다.
           files: mindmap.apk
           make_latest: true
