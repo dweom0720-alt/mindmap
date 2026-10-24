@@ -66,7 +66,7 @@ const FONTS = {
 const SHAPES = [['auto', '자동'], ['round', '둥근 상자'], ['pill', '알약'], ['box', '사각'], ['ellipse', '타원'], ['hex', '육각'], ['line', '밑줄'], ['none', '글자만']];
 const FILLS = [['auto', '자동'], ['tint', '연하게'], ['solid', '진하게'], ['white', '흰색'], ['none', '없음']];
 const STYLE_DEFAULT = {
-  numbering: 'top', rollup: true, bg: 'plain', shape: 'auto', fill: 'auto', shadow: false,
+  numbering: 'none', rollup: false, optIn: true, bg: 'plain', shape: 'auto', fill: 'auto', shadow: false,
   lineShape: 'curve', lineWidth: 'normal', lineDash: 'solid', lineColor: 'branch', taper: true,
   font: 'auto', fontScale: 'm', spacing: 'normal',
 };
@@ -161,7 +161,10 @@ function newMap(title = '새 마인드맵', layout = 'radial', style = {}) {
   return { id: uid(), category: '', layout, updated: Date.now(), root: newNode(title), links: [], style: { ...STYLE_DEFAULT, ...style } };
 }
 function normalizeMap(m) {
+  const chosen = m.style && m.style.optIn;
   m.style = Object.assign({ ...STYLE_DEFAULT }, m.style || {});
+  // 예전 맵: 번호(01·02)·진행률(0/2)이 자동으로 붙던 것을 끄고, 필요할 때 직접 켜도록
+  if (!chosen) { m.style.numbering = 'none'; m.style.rollup = false; m.style.optIn = true; }
   m.links = Array.isArray(m.links) ? m.links : [];
   if (!LAYOUT_NAMES[m.layout]) m.layout = 'radial';
   return m;
@@ -966,7 +969,10 @@ function render() {
   renderOutline();
   applyView();
 }
+let lastGoodVp = { x: 0, y: 0, k: 1 };
 function applyView() {
+  if (![state.vp.x, state.vp.y, state.vp.k].every(Number.isFinite) || state.vp.k <= 0) state.vp = { ...lastGoodVp };
+  else lastGoodVp = { ...state.vp };
   const { x, y, k } = state.vp;
   world.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
   const bg = state.map?.style?.bg || 'plain', g = 24 * k;
@@ -1009,7 +1015,16 @@ function ensureVisible(id) {
   if (dx || dy) { state.vp.x += dx; state.vp.y += dy; applyView(); }
 }
 
+function placeNotePeek() {
+  const np = $('#notePeek'); if (!np) return;
+  const e = state.sel && state.L.get(state.sel);
+  const sh = $('#sheet');
+  if (!e || !e.n.note || state.editing || state.drag || (!sh.hidden && !sh.classList.contains('side'))) { np.hidden = true; return; }
+  np.innerHTML = `<b>메모</b>${esc(e.n.note)}`;
+  np.hidden = false;
+}
 function placePill() {
+  placeNotePeek();
   const e = state.sel && state.L.get(state.sel);
   const sh = $('#sheet');
   if (!e || state.editing || state.drag || state.linking || state.voice || (!sh.hidden && !sh.classList.contains('side'))) { pill.hidden = true; return; }
@@ -1327,7 +1342,7 @@ let gest = null, lastTap = { id: null, t: 0 };
 
 svg.addEventListener('pointerdown', (ev) => {
   if (state.editing) finishEdit(true);
-  svg.setPointerCapture(ev.pointerId);
+  try { svg.setPointerCapture(ev.pointerId); } catch (e) { /* 무시 */ }
   ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   if (ptrs.size === 2) {
     if (gest && gest.lp) clearTimeout(gest.lp);
@@ -1354,7 +1369,8 @@ svg.addEventListener('pointermove', (ev) => {
   if (!ptrs.has(ev.pointerId)) return;
   ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   if (!gest || gest.long) return;
-  if (gest.type === 'pinch' && ptrs.size === 2) {
+  if (gest.type === 'pinch') {
+    if (ptrs.size !== 2) return;
     const [p1, p2] = [...ptrs.values()];
     const d = Math.hypot(p1.x - p2.x, p1.y - p2.y), m = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
     const k = clamp(gest.k0 * d / gest.d0, 0.2, 3);
@@ -1381,7 +1397,12 @@ function endPointer(ev) {
   if (!ptrs.has(ev.pointerId)) return;
   ptrs.delete(ev.pointerId);
   if (!gest) return;
-  if (gest.type === 'pinch') { if (ptrs.size === 0) gest = null; return; }
+  if (gest.type === 'pinch') {
+    // 두 손가락 중 하나를 먼저 떼면 남은 손가락으로 자연스럽게 이어서 이동
+    if (ptrs.size === 1) { const [p] = [...ptrs.values()]; gest = { type: 'pan', sx: p.x, sy: p.y, vx: state.vp.x, vy: state.vp.y, moved: true }; }
+    else if (ptrs.size === 0) gest = null;
+    return;
+  }
   const g = gest; gest = null;
   if (g.lp) clearTimeout(g.lp);
   if (g.long) return;
@@ -1595,6 +1616,7 @@ pill.addEventListener('click', (ev) => {
   const id = state.sel;
   ({ child: () => addChild(id), sibling: () => addSibling(id), edit: () => startEdit(id), props: () => openProps(), more: openMore, delete: () => deleteNode(id) })[b.dataset.act]();
 });
+$('#notePeek').addEventListener('click', () => { if (!state.sel) return; state.propTab = '기타'; openProps('note'); });
 $('#fab').addEventListener('click', () => addChild(state.sel || state.map.root.id));
 $('#fitBtn').addEventListener('click', () => fit());
 $('#undoBtn').addEventListener('click', undo);
@@ -1936,6 +1958,8 @@ function openMapMenu() {
         <button id="xTpl">${ICO.tpl}<span>템플릿 저장</span></button>
       </div>
     </div>
+    <div class="sh-sec"><div class="sh-label">가지에 번호 붙이기 (선택)</div>${seg('mnum', m.style.numbering, [['none', '안 붙임'], ['top', '큰 가지 01'], ['outline', '모두 1.2.3']])}</div>
+    <div class="sh-sec"><div class="toggle-row"><span>할 일 진행률 표시 (예: 2/4)</span><button class="switch${m.style.rollup ? ' on' : ''}" id="mRollup" aria-label="진행률 표시"></button></div></div>
     <div class="sh-sec"><div class="sh-label">분류</div><div class="chips">${['', ...CATS].map((c) => `<button class="chip${(m.category || '') === c ? ' on' : ''}" data-cat="${c}">${c || '없음'}</button>`).join('')}</div></div>
     <div class="menu-list">
       <button id="mStyle">${ICO.style}<span>맵 스타일 (선·글꼴·상자·레이아웃)</span></button>
@@ -1945,6 +1969,8 @@ function openMapMenu() {
     </div>`, 'menu');
   const body = $('#sheetBody');
   body.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => { m.category = b.dataset.cat; store.put(m); openMapMenu(); }));
+  body.querySelectorAll('[data-mnum]').forEach((b) => b.addEventListener('click', () => { mutate(() => { m.style.numbering = b.dataset.mnum; }); openMapMenu(); }));
+  $('#mRollup').onclick = () => { mutate(() => { m.style.rollup = !m.style.rollup; }); openMapMenu(); };
   $('#xPng').onclick = () => { closeSheet(); exportPNG(m, false); };
   $('#xShare').onclick = () => { closeSheet(); exportPNG(m, true); };
   $('#xText').onclick = () => { closeSheet(); shareText(m); };
