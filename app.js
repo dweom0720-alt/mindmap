@@ -356,6 +356,7 @@ function wrapText(text, font, maxW) {
    배치 계산
    ========================================================= */
 const BADGE_FONT = `600 11px ${SANS}`;
+const CAP_FONT = `400 11.5px ${SANS}`;
 const SCALE = { s: 0.88, m: 1, l: 1.15, xl: 1.32 };
 const WRAP = { narrow: 140, normal: 230, wide: 360, none: 3000 };
 const SPACING = { tight: 0.7, normal: 1, wide: 1.45 };
@@ -442,10 +443,6 @@ function computeLayout(map) {
     e.fill = fill;
     const f = fontFor(depth, layout, n, style);
     e.f = f;
-    const maxW = n.wrap ? WRAP[n.wrap] : depth === 0 ? 260 : 230;
-    e.lines = n.text ? wrapText(n.text, f.font, maxW) : ['　'];
-    e.lineW = e.lines.map((l) => tw(l || ' ', f.font));
-    e.textW = Math.max(...e.lineW);
     e.align = n.align || (shape === 'root' || shape === 'card' || BOXY.has(shape) ? 'center' : 'left');
     let pre = 0;
     if (depth > 0 && n.done !== undefined) pre += 22;
@@ -463,6 +460,11 @@ function computeLayout(map) {
     for (const b of e.badges) { b.w = tw(b.text, BADGE_FONT) + (b.kind === 'date' ? 24 : 14); post += b.w + 5; }
     if (post) post += 5;
     e.pre = pre; e.post = post;
+    const pad0 = SHAPE_PAD[shape];
+    const maxW = n.fw ? Math.max(30, n.fw - pad0.l - pad0.r - pre - post) : n.wrap ? WRAP[n.wrap] : depth === 0 ? 260 : 230;
+    e.lines = n.text ? wrapText(n.text, f.font, maxW) : ['　'];
+    e.lineW = e.lines.map((l) => tw(l || ' ', f.font));
+    e.textW = Math.max(...e.lineW);
     e.contentW = pre + e.textW + post;
     e.imgW = 0; e.imgH = 0;
     if (n.img) { const w = Math.min(n.imgW || 160, depth === 0 ? 200 : 160); e.imgW = w; e.imgH = Math.round(w * ((n.imgH || 120) / (n.imgW || 160))); }
@@ -471,13 +473,33 @@ function computeLayout(map) {
     const innerW = Math.max(e.contentW, e.imgW);
     const innerH = (e.imgH ? e.imgH + 6 : 0) + e.lines.length * f.lh;
     e.w = innerW + pad.l + pad.r; e.h = innerH + pad.t + pad.b;
+    e.natH = e.h;
     if (shape === 'root') { e.w = Math.max(e.w, 130); e.h = Math.max(e.h, 62); }
     if (shape === 'card') e.w = Math.max(e.w, 132);
     if (shape === 'ellipse') e.w = Math.max(e.w, e.h * 1.4);
+    // 직접 정한 크기 (글자 수와 상관없이 고정)
+    if (n.fw) e.w = Math.max(n.fw, pad.l + pad.r + 20);
+    if (n.fh) e.h = Math.max(n.fh, e.natH);
     L.set(n.id, e);
     if (parent) L.get(parent).kids.push(e);
     if (!n.collapsed) n.children.forEach((c, i) => walk(c, depth + 1, n.id, e.color, i, [...path, i]));
   })(map.root, 0, null, null, 0, []);
+
+  // 같은 단계 도형 크기 똑같이
+  if (style.uniform) {
+    const mx = new Map();
+    for (const e of L.values()) if (e.depth > 0 && !e.n.fw) { const m = mx.get(e.depth) || { w: 0, h: 0 }; m.w = Math.max(m.w, e.w); m.h = Math.max(m.h, e.h); mx.set(e.depth, m); }
+    for (const e of L.values()) if (e.depth > 0 && !e.n.fw) { const m = mx.get(e.depth); e.w = m.w; if (!e.n.fh) e.h = m.h; }
+  }
+  // 주석: 도형 아래 작은 파란 글씨
+  for (const e of L.values()) {
+    e.boxH = e.h; e.vOff = Math.max(0, (e.h - e.natH) / 2); e.capLines = null; e.capH = 0;
+    if (e.n.cap) {
+      e.capLines = wrapText(e.n.cap, CAP_FONT, Math.max(e.w - 4, 110));
+      e.capH = e.capLines.length * 15 + 5;
+      e.h += e.capH;
+    }
+  }
 
   const root = L.get(map.root.id);
   switch (layout) {
@@ -500,6 +522,8 @@ function computeLayout(map) {
       e.dir = e.x + e.w / 2 >= p.x + p.w / 2 ? 1 : -1;
     }
   }
+  // 배치가 끝나면 도형 높이는 상자만, 주석은 그 아래에
+  for (const e of L.values()) { e.fullH = e.h; e.h = e.boxH; }
   for (const e of L.values()) e.ay = e.shape === 'line' ? e.y + e.h : e.y + e.h / 2;
   return L;
 }
@@ -709,7 +733,7 @@ function edgeSVG(L, map) {
   const listKids = (e) => {
     for (const c of e.kids) {
       const la = lineAttrs(c, style, 1.5);
-      out += `<path d="${listEdge(e.x + 9, e.y + e.h, c.x, c.y + c.h / 2, style.lineShape)}" ${la.attr} opacity=".7"/>`;
+      out += `<path d="${listEdge(e.x + 9, e.y + (e.fullH || e.h), c.x, c.y + c.h / 2, style.lineShape)}" ${la.attr} opacity=".7"/>`;
     }
   };
   const deep = (e) => { listKids(e); e.kids.forEach(deep); };
@@ -722,7 +746,7 @@ function edgeSVG(L, map) {
     }
   } else if (layout === 'down') {
     for (const e of L.values()) for (const c of e.kids) {
-      const p = { x: e.x + e.w / 2, y: e.y + e.h }, q = { x: c.x + c.w / 2, y: c.y };
+      const p = { x: e.x + e.w / 2, y: e.y + (e.fullH || e.h) }, q = { x: c.x + c.w / 2, y: c.y };
       if (e.depth === 0) out += rootEdge(p, q, 'v', c, style);
       else { const la = lineAttrs(c, style, c.depth === 2 ? 2 : 1.5); out += `<path d="${edgePath(p, q, 'v', style.lineShape)}" ${la.attr} opacity=".8"/>`; }
     }
@@ -841,10 +865,10 @@ function textColorFor(e) {
 
 function nodeSVG(e, map, opts = {}) {
   const layout = map.layout, style = map.style;
-  const n = e.n, sel = !opts.plain && state.sel === e.id, f = e.f, pad = e.pad;
+  const n = e.n, sel = !opts.plain && (state.sel === e.id || !!(state.multi && state.multi.has(e.id))), f = e.f, pad = e.pad;
   const isDrag = state.drag && state.drag.mode === 'ghost' && (state.drag.id === e.id || state.drag.desc.has(e.id));
   let s = `<g data-id="${e.id}" class="hit"${isDrag ? ' opacity=".3"' : ''}>`;
-  s += `<rect x="${e.x - 4}" y="${e.y - 4}" width="${e.w + 8}" height="${e.h + 8}" fill="transparent"/>`;
+  s += `<rect x="${e.x - 4}" y="${e.y - 4}" width="${e.w + 8}" height="${(e.fullH || e.h) + 8}" fill="transparent"/>`;
   if (state.dropTarget === e.id) s += `<rect x="${e.x - 6}" y="${e.y - 6}" width="${e.w + 12}" height="${e.h + 12}" rx="10" fill="${T.sel}" stroke="${T.gold}" stroke-width="2" stroke-dasharray="5 4"/>`;
   if (state.linking && state.linking !== e.id && !opts.plain) s += `<rect x="${e.x - 5}" y="${e.y - 5}" width="${e.w + 10}" height="${e.h + 10}" rx="9" fill="none" stroke="${T.gold}" stroke-width="1.5" stroke-dasharray="3 4" opacity=".7"/>`;
   const done = n.done === true;
@@ -865,7 +889,7 @@ function nodeSVG(e, map, opts = {}) {
     else s += `<rect x="${e.x}" y="${e.y + e.h - la.w}" width="${e.w}" height="${la.w}" rx="${la.w / 2}" fill="${la.color}"/>`;
   } else if (e.shape === 'plain' || e.shape === 'none') {
     if (sel) s += `<rect x="${e.x - 3}" y="${e.y - 2}" width="${e.w + 6}" height="${e.h + 4}" rx="6" fill="${T.sel}"/>`;
-    if (e.shape === 'plain') s += `<circle cx="${e.x + 5}" cy="${e.y + pad.t + (e.imgH ? e.imgH + 6 : 0) + f.lh / 2}" r="3" fill="${e.color}"/>`;
+    if (e.shape === 'plain') s += `<circle cx="${e.x + 5}" cy="${e.y + pad.t + (e.vOff || 0) + (e.imgH ? e.imgH + 6 : 0) + f.lh / 2}" r="3" fill="${e.color}"/>`;
   } else {
     const color = isRoot ? (n.color != null ? e.color : T.root) : e.color;
     let fill = 'none', fop = '';
@@ -883,7 +907,7 @@ function nodeSVG(e, map, opts = {}) {
   }
 
   const innerW = e.w - pad.l - pad.r;
-  const imgTop = e.y + pad.t;
+  const imgTop = e.y + pad.t + (e.vOff || 0);
   if (e.imgH) {
     const ix = e.align === 'center' ? e.x + (e.w - e.imgW) / 2 : e.align === 'right' ? e.x + e.w - pad.r - e.imgW : e.x + pad.l;
     s += `<image href="${n.img}" x="${ix}" y="${imgTop}" width="${e.imgW}" height="${e.imgH}" preserveAspectRatio="xMidYMid slice"/>`;
@@ -914,19 +938,31 @@ function nodeSVG(e, map, opts = {}) {
   const mk2 = markers(n, mx, mid, mcol);
   s += mk2.s; mx = mk2.x;
   for (const b of e.badges) { s += badgeSVG(b, mx, mid, mcol); mx += b.w + 5; }
+  if (e.capLines) {
+    const cc = T.dark ? '#8DB8FF' : '#1F6FD1';
+    const listy = ['org', 'list', 'timeline', 'fishbone'].includes(layout) && e.depth > 0;
+    const anchor = e.align === 'center' ? 'middle' : e.align === 'right' ? 'end' : 'start';
+    const cx = anchor === 'middle' ? e.x + e.w / 2 : anchor === 'end' ? e.x + e.w - 2 : e.x + (listy ? 16 : 3);
+    e.capLines.forEach((l, i) => { s += `<text x="${cx}" y="${e.y + e.h + 15 + i * 15}" text-anchor="${anchor}" font-family="${esc(SANS)}" font-size="11.5" fill="${cc}">${esc(l)}</text>`; });
+  }
   s += '</g>';
 
   const showHandle = !isRoot && n.children.length && (n.collapsed || (sel && !opts.plain));
   if (showHandle) {
     let hx, hy;
     if (HFAM.has(layout)) { const a = outAnchor(e, { dir: e.dir }); hx = a.x + (e.dir > 0 ? 13 : -13); hy = a.y; }
-    else if (layout === 'down') { hx = e.x + e.w / 2; hy = e.y + e.h + 13; }
+    else if (layout === 'down') { hx = e.x + e.w / 2; hy = e.y + (e.fullH || e.h) + 13; }
     else { hx = e.x + e.w + 13; hy = e.y + e.h / 2; }
     s += `<g${opts.plain ? '' : ` data-toggle="${e.id}" class="hit"`}><circle cx="${hx}" cy="${hy}" r="16" fill="transparent"/><circle cx="${hx}" cy="${hy}" r="10" fill="${T.surface}" stroke="${e.color}" stroke-width="1.5"/>`;
     s += n.collapsed
       ? `<text x="${hx}" y="${hy + 3.5}" text-anchor="middle" font-family="${esc(SANS)}" font-size="10" font-weight="700" fill="${e.color}">${countNodes(n) - 1}</text>`
       : `<path d="M${hx - 4.5},${hy} h9" stroke="${e.color}" stroke-width="1.8" stroke-linecap="round"/>`;
     s += '</g>';
+  }
+  // 크기 조절 손잡이 (선택한 도형 하나일 때)
+  if (!opts.plain && state.sel === e.id && !state.multi) {
+    const hx = e.x + e.w, hy = e.y + e.h;
+    s += `<g data-resize="${e.id}" class="hit"><rect x="${hx - 11}" y="${hy - 11}" width="22" height="22" fill="transparent"/><rect x="${hx - 5.5}" y="${hy - 5.5}" width="11" height="11" rx="2.5" fill="${T.surface}" stroke="${T.gold}" stroke-width="2"/><path d="M${hx - 2},${hy + 2} l4,-4" stroke="${T.gold}" stroke-width="1.4" stroke-linecap="round"/></g>`;
   }
   return s;
 }
@@ -943,7 +979,7 @@ function mapSVGInner(L, map, opts = {}) {
 }
 function bounds(L) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const e of L.values()) { x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y); x1 = Math.max(x1, e.x + e.w); y1 = Math.max(y1, e.y + e.h); }
+  for (const e of L.values()) { x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y); x1 = Math.max(x1, e.x + e.w); y1 = Math.max(y1, e.y + (e.fullH || e.h)); }
   const r = [...L.values()][0];
   if (r && r.spineStart != null) x0 = Math.min(x0, r.spineStart);
   if (r && r.axisEnd != null) x1 = Math.max(x1, r.axisEnd + 12);
@@ -1019,7 +1055,7 @@ function placeNotePeek() {
   const np = $('#notePeek'); if (!np) return;
   const e = state.sel && state.L.get(state.sel);
   const sh = $('#sheet');
-  if (!e || !e.n.note || state.editing || state.drag || (!sh.hidden && !sh.classList.contains('side'))) { np.hidden = true; return; }
+  if (!e || state.multi || !e.n.note || state.editing || state.drag || (!sh.hidden && !sh.classList.contains('side'))) { np.hidden = true; return; }
   np.innerHTML = `<b>메모</b>${esc(e.n.note)}`;
   np.hidden = false;
 }
@@ -1027,7 +1063,7 @@ function placePill() {
   placeNotePeek();
   const e = state.sel && state.L.get(state.sel);
   const sh = $('#sheet');
-  if (!e || state.editing || state.drag || state.linking || state.voice || (!sh.hidden && !sh.classList.contains('side'))) { pill.hidden = true; return; }
+  if (!e || state.multi || state.editing || state.drag || state.linking || state.voice || (!sh.hidden && !sh.classList.contains('side'))) { pill.hidden = true; return; }
   pill.hidden = false;
   pill.querySelector('[data-act=delete]').hidden = e.depth === 0;
   pill.querySelector('[data-act=sibling]').hidden = e.depth === 0;
@@ -1065,6 +1101,7 @@ function flushPending() {
 }
 function afterRestore() {
   if (state.sel && !findNode(state.map.root, state.sel)) state.sel = null;
+  if (state.multi) for (const id of [...state.multi]) if (!findNode(state.map.root, id)) state.multi.delete(id);
   if (state.selLink && !state.map.links.some((l) => l.id === state.selLink)) state.selLink = null;
   ensureMapFonts(state.map);
   commit();
@@ -1158,7 +1195,7 @@ async function pasteInto(id) {
   });
   toast(`${nodes.length > 1 ? nodes.length + '개 가지를 ' : ''}붙여넣었습니다`);
 }
-const STYLE_KEYS = ['color', 'shape', 'fill', 'border', 'bw', 'shadow', 'font', 'fs', 'size', 'bold', 'italic', 'underline', 'strike', 'align', 'tc', 'wrap', 'ld', 'lw'];
+const STYLE_KEYS = ['color', 'shape', 'fill', 'border', 'bw', 'shadow', 'font', 'fs', 'size', 'bold', 'italic', 'underline', 'strike', 'align', 'tc', 'wrap', 'ld', 'lw', 'fw', 'fh'];
 function pickStyle(n) { return Object.fromEntries(STYLE_KEYS.map((k) => [k, n[k]])); }
 function putStyle(n, st, keys = STYLE_KEYS) { for (const k of keys) { if (st[k] === undefined) delete n[k]; else n[k] = st[k]; } }
 function copyStyle(id) {
@@ -1353,9 +1390,14 @@ svg.addEventListener('pointerdown', (ev) => {
   }
   if (ptrs.size > 2) return;
   const t = ev.target;
+  const rz = t.closest('[data-resize]');
+  if (rz) {
+    const e = state.L.get(rz.dataset.resize);
+    if (e) { gest = { type: 'resize', id: e.id, sx: ev.clientX, sy: ev.clientY, w0: e.w, h0: e.h, moved: false }; return; }
+  }
   const tog = t.closest('[data-toggle]'), chk = t.closest('[data-check]'), g = t.closest('[data-id]'), lk = t.closest('[data-link]');
   gest = { type: g || tog ? 'node' : lk ? 'link' : 'pan', id: g?.dataset.id, link: lk?.dataset.link, toggle: tog?.dataset.toggle, check: chk?.dataset.check, sx: ev.clientX, sy: ev.clientY, vx: state.vp.x, vy: state.vp.y, moved: false };
-  if (gest.type === 'node' && gest.id && !gest.toggle && !state.linking) {
+  if (gest.type === 'node' && gest.id && !gest.toggle && !state.linking && !state.multi) {
     const gg = gest;
     gg.lp = setTimeout(() => {
       if (gest !== gg || gg.moved) return;
@@ -1381,12 +1423,21 @@ svg.addEventListener('pointermove', (ev) => {
     return;
   }
   const dx = ev.clientX - gest.sx, dy = ev.clientY - gest.sy;
+  if (gest.type === 'resize') {
+    if (!gest.moved && Math.hypot(dx, dy) < 3) return;
+    if (!gest.moved) { state.undo.push(snapshot()); state.redo = []; gest.moved = true; }
+    const r = findNode(state.map.root, gest.id); if (!r) return;
+    r.node.fw = Math.round(Math.max(40, gest.w0 + dx / state.vp.k));
+    r.node.fh = Math.round(Math.max(24, gest.h0 + dy / state.vp.k));
+    render();
+    return;
+  }
   if (!gest.moved && Math.hypot(dx, dy) < 7) return;
   const first = !gest.moved;
   gest.moved = true;
   if (gest.lp) clearTimeout(gest.lp);
   const isRoot = gest.id === state.map.root.id;
-  if (gest.type !== 'node' || gest.toggle || state.linking || (isRoot && state.map.layout !== 'free')) {
+  if (gest.type !== 'node' || gest.toggle || state.linking || state.multi || (isRoot && state.map.layout !== 'free')) {
     state.vp.x = gest.vx + dx; state.vp.y = gest.vy + dy; applyView();
     return;
   }
@@ -1406,12 +1457,19 @@ function endPointer(ev) {
   const g = gest; gest = null;
   if (g.lp) clearTimeout(g.lp);
   if (g.long) return;
+  if (g.type === 'resize') { if (g.moved) commit(); return; }
   if (ev.type === 'pointercancel') { if (state.drag) cancelDrag(); return; }
   if (g.moved) { if (state.drag) endDrag(ev); return; }
   if (state.linking) { finishLinking(g.type === 'node' ? g.id : null); return; }
   if (g.toggle) { setProp(g.toggle, (n) => { n.collapsed = !n.collapsed; }); return; }
   if (g.check) { setProp(g.check, (n) => { n.done = !n.done; }); return; }
   if (g.type === 'link') { state.sel = null; state.selLink = g.link; render(); openLinkSheet(g.link); return; }
+  if (g.type === 'node' && (state.multi || ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
+    if (!state.multi) { state.multi = new Set(state.sel ? [state.sel] : []); state.sel = null; }
+    if (state.multi.has(g.id)) state.multi.delete(g.id); else state.multi.add(g.id);
+    updateMulti();
+    return;
+  }
   if (g.type === 'node') {
     const now = Date.now();
     if (lastTap.id === g.id && now - lastTap.t < 380) { lastTap = { id: null, t: 0 }; select(g.id); startEdit(g.id); return; }
@@ -1438,6 +1496,66 @@ svg.addEventListener('wheel', (ev) => {
   } else { state.vp.x -= ev.deltaX; state.vp.y -= ev.deltaY; }
   applyView();
 }, { passive: false });
+
+/* ---------- 여러 개 선택 ---------- */
+function enterMulti() {
+  if (state.editing) finishEdit(true);
+  state.multi = new Set(state.sel ? [state.sel] : []);
+  state.sel = null;
+  updateMulti();
+  toast('바꿀 도형들을 차례로 누르세요');
+}
+function exitMulti() {
+  state.multi = null;
+  $('#multiBar').hidden = true;
+  $('#multiBtn')?.classList.remove('on');
+  if (sheetKind === 'props') closeSheet();
+  render();
+}
+function updateMulti() {
+  const n = state.multi ? state.multi.size : 0;
+  $('#multiBar').hidden = !state.multi;
+  $('#multiBtn')?.classList.toggle('on', !!state.multi);
+  $('#multiCount').textContent = n ? `${n}개 선택` : '도형을 누르세요';
+  $('#multiBar').querySelectorAll('[data-mb]').forEach((b) => { if (b.dataset.mb !== 'done' && b.dataset.mb !== 'all') b.disabled = !n; });
+  render();
+  if (!$('#sheet').hidden && sheetKind === 'props') { if (n) openProps(); else closeSheet(); }
+}
+function selectedIds() { return state.multi && state.multi.size ? [...state.multi] : state.sel ? [state.sel] : []; }
+function setMany(ids, fn, live) {
+  const nodes = ids.map((id) => findNode(state.map.root, id)).filter(Boolean).map((r) => r.node);
+  if (!nodes.length) return;
+  if (live) { nodes.forEach(fn); commit(); } else mutate(() => nodes.forEach(fn));
+}
+function sameSize(ids) {
+  const es = ids.map((id) => state.L.get(id)).filter(Boolean);
+  if (es.length < 2) return toast('도형을 2개 이상 골라 주세요');
+  const w = Math.round(Math.max(...es.map((e) => e.w))), h = Math.round(Math.max(...es.map((e) => e.h)));
+  setMany(ids, (n) => { n.fw = w; n.fh = h; });
+  toast(`${es.length}개 도형을 같은 크기로 맞췄습니다`);
+}
+function autoSize(ids) { setMany(ids, (n) => { delete n.fw; delete n.fh; }); toast('글자에 맞는 크기로 되돌렸습니다'); }
+$('#multiBar').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-mb]'); if (!b || b.disabled) return;
+  const ids = selectedIds();
+  switch (b.dataset.mb) {
+    case 'style': state.propTab = '상자'; openProps(); break;
+    case 'same': sameSize(ids); break;
+    case 'auto': autoSize(ids); break;
+    case 'all': { const all = new Set(); (function w(n, d) { if (d > 0) all.add(n.id); if (!n.collapsed) n.children.forEach((c) => w(c, d + 1)); })(state.map.root, 0); state.multi = all; updateMulti(); break; }
+    case 'del': {
+      const rid = state.map.root.id;
+      const del = ids.filter((id) => id !== rid);
+      if (!del.length) return;
+      mutate(() => { for (const id of del) { const r = findNode(state.map.root, id); if (r && r.parent) removeNode(r); } state.sel = null; });
+      state.multi = new Set(); updateMulti();
+      toast(`${del.length}개 가지를 삭제했습니다`, '되돌리기', undo);
+      break;
+    }
+    case 'done': exitMulti(); break;
+  }
+});
+$('#multiBtn').addEventListener('click', () => (state.multi ? exitMulti() : enterMulti()));
 
 function select(id) {
   state.sel = id;
@@ -1544,6 +1662,8 @@ document.addEventListener('keydown', (ev) => {
   if (mod && key === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
   if (mod && key === 'y') { ev.preventDefault(); redo(); return; }
   if (ev.key === 'Escape' && state.linking) { cancelLinking(); return; }
+  if (ev.key === 'Escape' && state.multi) { exitMulti(); return; }
+  if (state.multi) return;
   const id = state.sel;
   if (mod && key === 'v') { ev.preventDefault(); pasteInto(id); return; }
   if (!id) {
@@ -1700,10 +1820,10 @@ function openMore() {
     ['cut', '잘라내기', ICO.cut, isRoot], ['copy', '복사', ICO.copy], ['paste', '붙여넣기', ICO.paste],
     ['cstyle', '서식 복사', ICO.brush], ['pstyle', '서식 붙여넣기', ICO.brushIn, !state.styleClip],
     ['style', '글자·상자·선', ICO.style], ['icon', '아이콘', ICO.smile], ['image', n.img ? '사진 바꾸기' : '사진', ICO.image],
-    ['note', '메모·링크', ICO.note], ['date', '날짜', ICO.cal], ['check', n.done !== undefined ? '체크 빼기' : '할 일 체크', ICO.check, isRoot],
+    ['note', '메모·링크', ICO.note], ['cap', '주석', ICO.text], ['date', '날짜', ICO.cal], ['check', n.done !== undefined ? '체크 빼기' : '할 일 체크', ICO.check, isRoot],
     ['voice', '음성 입력', ICO.mic], ['sort', '하위 정렬', ICO.sort, n.children.length < 2],
     ['relation', '연결선', ICO.relation], ['fold', n.collapsed ? '펼치기' : '접기', ICO.fold, !n.children.length],
-    ['delete', '삭제', ICO.trash, isRoot, 'danger'],
+    ['multi', '여러 개 선택', ICO.check], ['delete', '삭제', ICO.trash, isRoot, 'danger'],
   ];
   openSheet(`
     <div class="sh-eyebrow">선택한 가지</div>
@@ -1712,13 +1832,15 @@ function openMore() {
   $('#sheetBody').querySelector('.grid-menu').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-m]'); if (!b || b.disabled) return;
     const id = n.id, act = b.dataset.m;
-    if (!['icon', 'note', 'date', 'sort', 'style'].includes(act)) closeSheet();
+    if (!['icon', 'note', 'date', 'sort', 'style', 'cap'].includes(act)) closeSheet();
     ({
       cut: () => copyNode(id, true), copy: () => copyNode(id), paste: () => pasteInto(id),
       cstyle: () => copyStyle(id), pstyle: () => pasteStyle(id),
       style: () => { state.propTab = '글자'; openProps(); },
       icon: () => { state.propTab = '기타'; openProps('icon'); }, image: () => pickImage(id),
-      note: () => { state.propTab = '기타'; openProps('note'); }, date: () => { state.propTab = '기타'; openProps('date'); },
+      note: () => { state.propTab = '기타'; openProps('note'); },
+      cap: () => { state.propTab = '기타'; openProps('cap'); },
+      multi: () => enterMulti(), date: () => { state.propTab = '기타'; openProps('date'); },
       check: () => setProp(id, (x) => { if (x.done === undefined) x.done = false; else delete x.done; }),
       voice: () => startVoice(id), sort: () => openSort(id), relation: () => startLinking(id),
       fold: () => setProp(id, (x) => { x.collapsed = !x.collapsed; }), delete: () => deleteNode(id),
@@ -1774,8 +1896,11 @@ const shapeIcon = (k) => ({
 }[k] || '');
 
 function openProps(focus) {
-  const r = state.sel && findNode(state.map.root, state.sel); if (!r) return;
-  const n = r.node, isRoot = !r.parent, e = state.L.get(n.id);
+  const ids = selectedIds(); if (!ids.length) return;
+  const multi = ids.length > 1;
+  const r = findNode(state.map.root, ids[0]); if (!r) return;
+  const n = r.node, isRoot = !multi && !r.parent, e = state.L.get(n.id);
+  const setAll = (fn, live) => setMany(ids, fn, live);
   const tabs = ['글자', '상자', '선', '기타'].filter((t) => !(isRoot && t === '선'));
   if (!tabs.includes(state.propTab)) state.propTab = '글자';
   const tab = state.propTab;
@@ -1802,6 +1927,11 @@ function openProps(focus) {
     body = `
       <div class="sh-sec"><div class="sh-label">상자 모양</div><div class="chips sm">${shapes.map(([k, l]) => `<button class="chip${(n.shape || 'auto') === k ? ' on' : ''}" data-shape="${k}">${shapeIcon(k)}${l}</button>`).join('')}</div></div>
       <div class="sh-sec"><div class="sh-label">색상</div><div class="swatches"><button class="swatch auto${n.color == null ? ' on' : ''}" data-color="auto" aria-label="기본 색">기본</button>${T.branches.map((c, i) => `<button class="swatch${n.color === i ? ' on' : ''}" style="background:${c}" data-color="${i}" aria-label="색상 ${i + 1}"></button>`).join('')}</div><p class="hint">상자·선·글자에 함께 쓰이는 가지 색입니다.</p></div>
+      <div class="sh-sec"><div class="sh-label">도형 크기</div>
+        <div class="seg-row"><span class="hint" style="margin:0;min-width:28px">너비</span><div class="stepper"><button id="fwDn" aria-label="좁게">−</button><span>${Math.round(e ? e.w : 0)}</span><button id="fwUp" aria-label="넓게">+</button></div></div>
+        <div class="seg-row"><span class="hint" style="margin:0;min-width:28px">높이</span><div class="stepper"><button id="fhDn" aria-label="낮게">−</button><span>${Math.round(e ? e.h : 0)}</span><button id="fhUp" aria-label="높게">+</button></div></div>
+        <div class="row">${multi ? '<button class="row-btn" id="sameSize">선택한 도형 크기 똑같이</button>' : ''}<button class="row-btn" id="autoSize">글자에 맞게 (자동)</button></div>
+        <p class="hint">${multi ? '여러 개를 고르면 모두 같은 값으로 바뀝니다.' : '도형을 누르면 오른쪽 아래 모서리의 작은 네모를 끌어서도 크기를 바꿀 수 있습니다.'} 크기를 정하면 글자 수와 상관없이 그 크기로 고정됩니다.</p></div>
       <div class="sh-sec"><div class="sh-label">채우기</div>${chipRow('fill', n.fill, FILLS)}</div>
       <div class="sh-sec"><div class="sh-label">테두리</div>${chipRow('border', n.border, [['auto', '자동'], ['solid', '실선'], ['dash', '파선'], ['dot', '점선'], ['none', '없음']])}
         <div class="seg-row" style="margin-top:6px"><span class="hint" style="margin:0">굵기</span><div class="stepper"><button id="bwDn" aria-label="가늘게">−</button><span>${(n.bw ?? 1.3).toFixed(1)}</span><button id="bwUp" aria-label="굵게">+</button></div></div></div>
@@ -1815,36 +1945,37 @@ function openProps(focus) {
   } else {
     body = `
       <div class="sh-sec" id="secIcon"><div class="sh-label">아이콘</div><div class="icons">${ICONS.map((x) => `<button data-icon="${x}" class="${n.icon === x ? 'on' : ''}">${x}</button>`).join('')}</div>${n.icon ? '<button class="row-btn" data-icon="" style="align-self:flex-start">아이콘 빼기</button>' : ''}</div>
+      ${multi ? '' : `<div class="sh-sec" id="secCap"><label class="sh-label" for="capInput">주석 <span class="hint" style="font-weight:400">도형 아래 작은 파란 글씨</span></label><textarea id="capInput" placeholder="예) 2026.11 시행, 담당 김OO" style="min-height:60px">${esc(n.cap || '')}</textarea></div>`}
       <div class="sh-sec" id="secDate"><label class="sh-label" for="dateInput">날짜 (마감일)</label><div class="row"><input id="dateInput" type="date" value="${esc(n.date || '')}">${n.date ? '<button class="row-btn" id="dateClear">지우기</button>' : ''}</div><p class="hint">지난 날짜는 빨간색, 2일 안은 금색으로 표시됩니다.</p></div>
-      <div class="sh-sec"><div class="sh-label">사진</div>${n.img ? `<img class="img-prev" src="${n.img}" alt="첨부 사진">` : ''}<div class="row"><button class="row-btn" id="imgPick">${n.img ? '사진 바꾸기' : '사진 넣기'}</button>${n.img ? '<button class="row-btn" id="imgDel">사진 빼기</button>' : ''}</div></div>
+      ${multi ? '' : `<div class="sh-sec"><div class="sh-label">사진</div>${n.img ? `<img class="img-prev" src="${n.img}" alt="첨부 사진">` : ''}<div class="row"><button class="row-btn" id="imgPick">${n.img ? '사진 바꾸기' : '사진 넣기'}</button>${n.img ? '<button class="row-btn" id="imgDel">사진 빼기</button>' : ''}</div></div>
       <div class="sh-sec" id="secNote"><label class="sh-label" for="noteInput">메모</label><textarea id="noteInput" placeholder="가지에 덧붙일 설명">${esc(n.note || '')}</textarea></div>
-      <div class="sh-sec"><label class="sh-label" for="linkInput">링크</label><div class="row"><input id="linkInput" type="url" inputmode="url" placeholder="https://" value="${esc(n.link || '')}"><button class="row-btn" id="openLink">열기</button></div></div>
+      <div class="sh-sec"><label class="sh-label" for="linkInput">링크</label><div class="row"><input id="linkInput" type="url" inputmode="url" placeholder="https://" value="${esc(n.link || '')}"><button class="row-btn" id="openLink">열기</button></div></div>`}
       <div class="sh-sec">
         ${isRoot ? '' : `<div class="toggle-row"><span>할 일 체크박스</span><button class="switch${n.done !== undefined ? ' on' : ''}" id="tgCheck" aria-label="할 일 체크박스"></button></div>`}
-        ${n.children.length ? `<div class="toggle-row"><span>하위 가지 접기</span><button class="switch${n.collapsed ? ' on' : ''}" id="tgCollapse" aria-label="하위 가지 접기"></button></div>` : ''}
+        ${n.children.length && !multi ? `<div class="toggle-row"><span>하위 가지 접기</span><button class="switch${n.collapsed ? ' on' : ''}" id="tgCollapse" aria-label="하위 가지 접기"></button></div>` : ''}
       </div>
-      ${isRoot ? '' : '<button class="danger-btn" id="delNode">이 가지 삭제</button>'}`;
+      ${isRoot || multi ? '' : '<button class="danger-btn" id="delNode">이 가지 삭제</button>'}`;
   }
-  const foot = tab === '기타' ? '' : `<div class="apply-row">${isRoot ? '' : '<button class="row-btn" id="applyDepth">같은 단계에 모두 적용</button>'}<button class="row-btn" id="resetStyle">서식 초기화</button></div>`;
+  const foot = tab === '기타' ? '' : `<div class="apply-row">${isRoot || multi ? '' : '<button class="row-btn" id="applyDepth">같은 단계에 모두 적용</button>'}<button class="row-btn" id="resetStyle">서식 초기화</button></div>`;
   openSheet(`
-    <div class="sh-eyebrow">선택한 가지</div>
-    <div class="sh-title">${esc(n.text || '제목 없음')}</div>
+    <div class="sh-eyebrow">${multi ? '여러 개 선택' : '선택한 가지'}</div>
+    <div class="sh-title">${multi ? `${ids.length}개 도형을 한꺼번에 바꾸기` : esc(n.text || '제목 없음')}</div>
     <div class="ptabs">${tabs.map((t) => `<button data-ptab="${t}" class="${tab === t ? 'on' : ''}">${t}</button>`).join('')}</div>
     ${body}${foot}`, 'props', true);
   const B = $('#sheetBody');
   const re = () => openProps();
   const on = (sel, fn) => B.querySelectorAll(sel).forEach((b) => b.addEventListener('click', () => { fn(b); re(); }));
-  const set = (key, v) => setProp(n.id, (x) => { if (v === 'auto' || v === '' || v == null) delete x[key]; else x[key] = v; });
+  const set = (key, v) => setAll((x) => { if (v === 'auto' || v === '' || v == null) delete x[key]; else x[key] = v; });
   B.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => { state.propTab = b.dataset.ptab; re(); $('#sheet').scrollTop = 0; }));
   on('[data-font]', (b) => { ensureFont(b.dataset.font); set('font', b.dataset.font); });
   $('#fsDn')?.addEventListener('click', () => { set('fs', clamp((n.fs || e.f.size) - 1, 9, 60)); re(); });
   $('#fsUp')?.addEventListener('click', () => { set('fs', clamp((n.fs || e.f.size) + 1, 9, 60)); re(); });
-  $('#fsReset')?.addEventListener('click', () => { setProp(n.id, (x) => { delete x.fs; delete x.size; }); re(); });
-  $('#tgBold')?.addEventListener('click', () => { setProp(n.id, (x) => { if (x.bold === true) delete x.bold; else x.bold = true; }); re(); });
-  $('#tgThin')?.addEventListener('click', () => { setProp(n.id, (x) => { if (x.bold === false) delete x.bold; else x.bold = false; }); re(); });
-  $('#tgItalic')?.addEventListener('click', () => { setProp(n.id, (x) => { if (x.italic) delete x.italic; else x.italic = true; }); re(); });
-  $('#tgUnder')?.addEventListener('click', () => { setProp(n.id, (x) => { if (x.underline) delete x.underline; else x.underline = true; }); re(); });
-  $('#tgStrike')?.addEventListener('click', () => { setProp(n.id, (x) => { if (x.strike) delete x.strike; else x.strike = true; }); re(); });
+  $('#fsReset')?.addEventListener('click', () => { setAll((x) => { delete x.fs; delete x.size; }); re(); });
+  $('#tgBold')?.addEventListener('click', () => { setAll((x) => { if (x.bold === true) delete x.bold; else x.bold = true; }); re(); });
+  $('#tgThin')?.addEventListener('click', () => { setAll((x) => { if (x.bold === false) delete x.bold; else x.bold = false; }); re(); });
+  $('#tgItalic')?.addEventListener('click', () => { setAll((x) => { if (x.italic) delete x.italic; else x.italic = true; }); re(); });
+  $('#tgUnder')?.addEventListener('click', () => { setAll((x) => { if (x.underline) delete x.underline; else x.underline = true; }); re(); });
+  $('#tgStrike')?.addEventListener('click', () => { setAll((x) => { if (x.strike) delete x.strike; else x.strike = true; }); re(); });
   on('[data-align]', (b) => set('align', b.dataset.align));
   on('[data-tc]', (b) => set('tc', b.dataset.tc));
   on('[data-wrap]', (b) => set('wrap', b.dataset.wrap));
@@ -1854,31 +1985,40 @@ function openProps(focus) {
   on('[data-border]', (b) => set('border', b.dataset.border));
   $('#bwDn')?.addEventListener('click', () => { set('bw', Math.round(clamp((n.bw ?? 1.3) - 0.5, 0.5, 6) * 10) / 10); re(); });
   $('#bwUp')?.addEventListener('click', () => { set('bw', Math.round(clamp((n.bw ?? 1.3) + 0.5, 0.5, 6) * 10) / 10); re(); });
-  $('#tgShadow')?.addEventListener('click', () => { const cur = n.shadow ?? state.map.style.shadow; setProp(n.id, (x) => { x.shadow = !cur; }); re(); });
+  $('#tgShadow')?.addEventListener('click', () => { const cur = n.shadow ?? state.map.style.shadow; setAll((x) => { x.shadow = !cur; }); re(); });
   on('[data-ld]', (b) => set('ld', b.dataset.ld));
   on('[data-lw]', (b) => set('lw', b.dataset.lw));
-  on('[data-icon]', (b) => setProp(n.id, (x) => { if (!b.dataset.icon || x.icon === b.dataset.icon) delete x.icon; else x.icon = b.dataset.icon; }));
+  on('[data-icon]', (b) => setAll((x) => { if (!b.dataset.icon || x.icon === b.dataset.icon) delete x.icon; else x.icon = b.dataset.icon; }));
   $('#dateInput')?.addEventListener('change', (ev) => { set('date', ev.target.value); re(); });
   $('#dateClear')?.addEventListener('click', () => { set('date', null); re(); });
   $('#imgPick')?.addEventListener('click', () => pickImage(n.id));
-  $('#imgDel')?.addEventListener('click', () => { setProp(n.id, (x) => { delete x.img; delete x.imgW; delete x.imgH; }); re(); });
+  $('#imgDel')?.addEventListener('click', () => { setAll((x) => { delete x.img; delete x.imgW; delete x.imgH; }); re(); });
   let noteSnap = false;
-  $('#noteInput')?.addEventListener('input', (ev) => { if (!noteSnap) { state.undo.push(snapshot()); state.redo = []; noteSnap = true; } setProp(n.id, (x) => { if (ev.target.value) x.note = ev.target.value; else delete x.note; }, true); });
+  $('#noteInput')?.addEventListener('input', (ev) => { if (!noteSnap) { state.undo.push(snapshot()); state.redo = []; noteSnap = true; } setAll((x) => { if (ev.target.value) x.note = ev.target.value; else delete x.note; }, true); });
   let linkSnap = false;
-  $('#linkInput')?.addEventListener('input', (ev) => { if (!linkSnap) { state.undo.push(snapshot()); state.redo = []; linkSnap = true; } setProp(n.id, (x) => { const v = ev.target.value.trim(); if (v) x.link = v; else delete x.link; }, true); });
+  $('#linkInput')?.addEventListener('input', (ev) => { if (!linkSnap) { state.undo.push(snapshot()); state.redo = []; linkSnap = true; } setAll((x) => { const v = ev.target.value.trim(); if (v) x.link = v; else delete x.link; }, true); });
   $('#openLink')?.addEventListener('click', () => {
     let v = $('#linkInput').value.trim(); if (!v) return toast('링크를 먼저 넣어 주세요');
     if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
     window.open(v, '_blank', 'noopener');
   });
-  $('#tgCheck')?.addEventListener('click', () => { setProp(n.id, (x) => { if (x.done === undefined) x.done = false; else delete x.done; }); re(); });
-  $('#tgCollapse')?.addEventListener('click', () => { setProp(n.id, (x) => { x.collapsed = !x.collapsed; }); re(); });
+  $('#tgCheck')?.addEventListener('click', () => { setAll((x) => { if (x.done === undefined) x.done = false; else delete x.done; }); re(); });
+  $('#tgCollapse')?.addEventListener('click', () => { setAll((x) => { x.collapsed = !x.collapsed; }); re(); });
   $('#delNode')?.addEventListener('click', () => { closeSheet(); deleteNode(n.id); });
   $('#applyDepth')?.addEventListener('click', () => applyToSameDepth(n.id));
-  $('#resetStyle')?.addEventListener('click', () => { resetStyle(n.id); re(); });
+  $('#resetStyle')?.addEventListener('click', () => { setAll((x) => { for (const k of STYLE_KEYS) delete x[k]; }); re(); });
+  const step = (key, d, min) => { setAll((x) => { const ee = state.L.get(x.id); const cur = x[key] || (ee ? (key === 'fw' ? ee.w : ee.h) : 60); x[key] = Math.round(Math.max(min, cur + d)); }); re(); };
+  $('#fwDn')?.addEventListener('click', () => step('fw', -10, 40));
+  $('#fwUp')?.addEventListener('click', () => step('fw', 10, 40));
+  $('#fhDn')?.addEventListener('click', () => step('fh', -6, 24));
+  $('#fhUp')?.addEventListener('click', () => step('fh', 6, 24));
+  $('#sameSize')?.addEventListener('click', () => { sameSize(ids); re(); });
+  $('#autoSize')?.addEventListener('click', () => { autoSize(ids); re(); });
+  let capSnap = false;
+  $('#capInput')?.addEventListener('input', (ev) => { if (!capSnap) { state.undo.push(snapshot()); state.redo = []; capSnap = true; } setAll((x) => { const v = ev.target.value.trim(); if (v) x.cap = v; else delete x.cap; }, true); });
   if (typeof focus === 'string') {
-    const el = { icon: '#secIcon', note: '#secNote', date: '#secDate' }[focus];
-    if (el) setTimeout(() => { $(el)?.scrollIntoView({ block: 'start' }); if (focus === 'note') $('#noteInput')?.focus(); if (focus === 'date') $('#dateInput')?.showPicker?.(); }, 30);
+    const el = { icon: '#secIcon', note: '#secNote', date: '#secDate', cap: '#secCap' }[focus];
+    if (el) setTimeout(() => { $(el)?.scrollIntoView({ block: 'start' }); if (focus === 'note') $('#noteInput')?.focus(); if (focus === 'cap') $('#capInput')?.focus(); if (focus === 'date') $('#dateInput')?.showPicker?.(); }, 30);
   }
 }
 
@@ -1911,7 +2051,8 @@ function openStyleSheet() {
     ${H('글자 상자')}
     <div class="sh-sec"><div class="sh-label">가지 모양</div><div class="chips sm">${SHAPES.map(([k, l]) => `<button class="chip${st.shape === k ? ' on' : ''}" data-mshape="${k}">${shapeIcon(k)}${l}</button>`).join('')}</div></div>
     <div class="sh-sec"><div class="sh-label">채우기</div>${chipRow('mfill', st.fill, FILLS)}</div>
-    <div class="sh-sec"><div class="toggle-row"><span>그림자</span><button class="switch${st.shadow ? ' on' : ''}" id="tgMShadow" aria-label="그림자"></button></div></div>
+    <div class="sh-sec"><div class="toggle-row"><span>그림자</span><button class="switch${st.shadow ? ' on' : ''}" id="tgMShadow" aria-label="그림자"></button></div>
+      <div class="toggle-row"><span>같은 단계 도형은 글자 수와 상관없이 크기 똑같이</span><button class="switch${st.uniform ? ' on' : ''}" id="tgUniform" aria-label="크기 똑같이"></button></div></div>
     ${H('배치·기타')}
     <div class="sh-sec"><div class="sh-label">가지 간격</div>${seg('spc', st.spacing, [['tight', '좁게'], ['normal', '보통'], ['wide', '넓게']])}</div>
     <div class="sh-sec"><div class="sh-label">번호 매기기</div>${seg('num', st.numbering, [['none', '없음'], ['top', '큰 가지 01'], ['outline', '모두 1.2.3']])}</div>
@@ -1930,6 +2071,7 @@ function openStyleSheet() {
   bind('spc', 'spacing', true); bind('num', 'numbering'); bind('bg', 'bg');
   $('#tgTaper').onclick = () => setS({ taper: !st.taper });
   $('#tgMShadow').onclick = () => setS({ shadow: !st.shadow });
+  $('#tgUniform').onclick = () => setS({ uniform: !st.uniform }, true);
   $('#tgRollup').onclick = () => setS({ rollup: !st.rollup });
   bindThemePicker(openStyleSheet);
   $('#clearAll').onclick = () => { mutate(() => { (function w(n) { for (const k of STYLE_KEYS) if (k !== 'color') delete n[k]; n.children.forEach(w); })(m.root); }, { fit: true }); toast('개별 서식을 지웠습니다'); openStyleSheet(); };
@@ -1990,7 +2132,7 @@ function outlineText(root) {
   const out = [];
   (function w(n, d, num) {
     const pre = d === 0 ? '' : '  '.repeat(d - 1) + (d === 1 ? num + '. ' : '- ');
-    out.push(pre + (n.done === true ? '[완료] ' : n.done === false ? '[ ] ' : '') + (n.text || '') + (n.date ? ` (~${n.date.slice(5).replace('-', '/')})` : '') + (n.note ? `  (메모: ${n.note.replace(/\n/g, ' ')})` : '') + (n.link ? `  <${n.link}>` : ''));
+    out.push(pre + (n.done === true ? '[완료] ' : n.done === false ? '[ ] ' : '') + (n.text || '') + (n.date ? ` (~${n.date.slice(5).replace('-', '/')})` : '') + (n.cap ? `  [${n.cap.replace(/\n/g, ' ')}]` : '') + (n.note ? `  (메모: ${n.note.replace(/\n/g, ' ')})` : '') + (n.link ? `  <${n.link}>` : ''));
     n.children.forEach((c, i) => w(c, d + 1, i + 1));
   })(root, 0, 0);
   return out.join('\n');
@@ -2275,6 +2417,7 @@ function showHome() {
   if (state.voice) state.voice.abort();
   flushPending();
   closeSheet();
+  state.multi = null; $('#multiBar').hidden = true;
   state.view = 'home'; state.map = null; state.sel = null; state.selLink = null; state.linking = null;
   $('#editor').hidden = true; $('#home').hidden = false;
   $('meta[name=theme-color]').setAttribute('content', T.header);
@@ -2283,6 +2426,7 @@ function showHome() {
 function openMap(id, push = true) {
   const m = store.get(id); if (!m) { toast('마인드맵을 찾지 못했습니다'); return showHome(); }
   closeSheet();
+  state.multi = null; $('#multiBar').hidden = true; $('#multiBtn')?.classList.remove('on');
   state.view = 'editor'; state.map = m; state.sel = null; state.selLink = null; state.linking = null; state.undo = []; state.redo = [];
   $('#home').hidden = true; $('#editor').hidden = false;
   $('meta[name=theme-color]').setAttribute('content', T.bg);

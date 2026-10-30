@@ -257,3 +257,13 @@ button.sync { border: 0; background: transparent; padding: 4px 0; text-align: le
 .menu-list a.menu-a svg { width: 20px; height: 20px; color: var(--goldText); stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .note-peek { position: absolute; left: 12px; right: 12px; bottom: calc(100px + var(--safeB)); z-index: 3; max-width: 560px; margin: 0 auto; text-align: left; border: 1px solid color-mix(in srgb, var(--gold) 50%, transparent); border-radius: 12px; background: var(--surface); color: var(--ink2); font: inherit; font-size: 13px; line-height: 1.5; padding: 10px 14px; box-shadow: 0 6px 18px var(--shadow); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .note-peek b { color: var(--goldText); margin-right: 8px; font-size: 12px; }
+/* 여러 개 선택 */
+.multi-bar { position: absolute; left: 8px; right: 8px; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 6px 6px 14px; border-radius: 14px; background: var(--root); color: var(--rootInk); box-shadow: 0 8px 22px rgba(10,20,40,.28); max-width: 760px; margin: 0 auto; }
+.multi-bar::-webkit-scrollbar { display: none; }
+.multi-bar #multiCount { font-size: 13px; font-weight: 700; color: var(--headerGold); white-space: nowrap; padding-right: 6px; flex-basis: 100%; }
+@media (min-width: 640px) { .multi-bar #multiCount { flex-basis: auto; margin-right: auto; } }
+.multi-bar button { height: 38px; flex: 1 1 auto; padding: 0 10px; border: 0; border-radius: 9px; background: rgba(255,255,255,.1); color: var(--rootInk); font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.multi-bar button:disabled { opacity: .35; }
+.multi-bar button.danger { color: #F2A3AE; }
+.multi-bar button.done { background: var(--gold); color: #13274A; font-weight: 700; }
+#multiBtn.on { background: var(--sel); color: var(--goldText); }
