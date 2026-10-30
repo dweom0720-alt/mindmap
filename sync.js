@@ -6,7 +6,7 @@
    - 권한: drive.file (이 앱이 만든 파일만 볼 수 있음)
    ========================================================= */
 const Sync = {
-  CLIENT_ID: '',
+  CLIENT_ID: '372885704616-if20usndc5jqq5nd59ugclq5iobo41vg.apps.googleusercontent.com',
   FILE: '마인드맵 앱 동기화.json',
   SCOPE: 'https://www.googleapis.com/auth/drive.file',
   st: 'off', msg: '', timer: null, busy: false, again: false, tokenClient: null,

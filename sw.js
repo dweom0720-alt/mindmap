@@ -1,5 +1,5 @@
 // 오프라인에서도 열리도록 앱 파일을 보관합니다.
-const CACHE = 'mindmap-v5';
+const CACHE = 'mindmap-v6';
 const APP = ['./', 'index.html', 'style.css', 'app.js', 'ai.js', 'sync.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
