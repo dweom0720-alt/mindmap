@@ -222,7 +222,7 @@ const Sync = {
       <div class="row">${on ? '<button class="row-btn" id="gSyncNow">지금 동기화</button><button class="row-btn" id="gOff">연결 끊기</button>' : '<button class="btn-primary small" id="gOn">구글 드라이브 연결</button>'}</div>
       <p class="hint">폰·탭·PC에서 같은 구글 계정으로 연결하면 맵이 자동으로 맞춰집니다. 내 드라이브에 ‘${Sync.FILE}’ 파일 하나만 만들어집니다.</p>
       ${`<details><summary class="hint" style="cursor:pointer">고급: OAuth 클라이언트 ID 직접 넣기 (보통은 필요 없음)</summary>
-        <div class="row" style="margin-top:6px"><input id="gClient" type="text" spellcheck="false" placeholder="xxxx.apps.googleusercontent.com" value="${esc(localStorage.getItem('mm.gclient') || '')}"><button class="row-btn" id="gClientSave">저장</button></div><p class="hint">비워 두면 앱에 들어 있는 ID를 씁니다.</p></details>`}
+        <div class="row" style="margin-top:6px"><input id="gClient" type="text" spellcheck="false" placeholder="xxxx.apps.googleusercontent.com" value="${esc(localStorage.getItem('mm.gclient') || '')}"><button class="row-btn" id="gClientSave">저장</button></div><p class="hint">비워 두면 앱에 들어 있는 ID를 씁니다. 지금 쓰는 ID: …${esc(Sync.clientId().split('.')[0].slice(-8))}</p></details>`}
     </div>`;
   },
   bindSettings(back) {
