@@ -267,3 +267,6 @@ button.sync { border: 0; background: transparent; padding: 4px 0; text-align: le
 .multi-bar button.danger { color: #F2A3AE; }
 .multi-bar button.done { background: var(--gold); color: #13274A; font-weight: 700; }
 #multiBtn.on { background: var(--sel); color: var(--goldText); }
+/* 생각서재 연결 */
+.bk-row { width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.bk-row .muted { opacity: .6; font-size: 12px; }
